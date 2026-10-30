@@ -1,0 +1,50 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: schemeradar
+      POSTGRES_USER: schemeradar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U schemeradar -d schemeradar"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env with the same database password}
+      TINYFISH_API_KEY: ${TINYFISH_API_KEY:-}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5:3b
+      ENABLE_RESEARCH_HISTORY: ${ENABLE_RESEARCH_HISTORY:-false}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+volumes:
+  pgdata:
+  models:
