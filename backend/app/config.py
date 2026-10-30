@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    enable_research_history: bool = False
     database_url: SecretStr | None = None
     tinyfish_api_key: SecretStr | None = None
     ollama_url: str = "http://localhost:11434"

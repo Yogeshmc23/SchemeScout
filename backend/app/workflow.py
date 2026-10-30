@@ -1,14 +1,18 @@
 import asyncio
+import logging
 import re
+import time
 from typing import TypedDict
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
 from .db import Database
 from .eligibility import match
-from .models import AgentRequest, AgentResult, Page, Source, SourceOutcome
-from .providers import Ollama, TinyFish
+from .models import AgentRequest, AgentResult, Page, Scholarship, Source, SourceOutcome, StageExecution
 from .security import ServiceError, is_official, safe_url
+from .services.ollama import Ollama
+from .tools.tinyfish import TinyFish
 
 
 class State(TypedDict):
@@ -24,19 +28,55 @@ class Workflow:
     def __init__(self, db: Database, tinyfish: TinyFish, ollama: Ollama):
         self.db, self.tinyfish, self.ollama = db, tinyfish, ollama
         graph = StateGraph(State)
-        for name in ("search", "fetch", "extract", "detail_fetch", "detail_extract", "store", "match", "chat", "summarize"):
-            graph.add_node(name, getattr(self, name))
-        graph.add_conditional_edges(START, lambda s: "chat" if s["request"].mode == "CHAT" else "search")
+        for name in ("validate_input", "classify", "search", "fetch", "extract", "detail_fetch", "detail_extract", "validate_records", "store", "retrieve", "match", "chat", "summarize"):
+            graph.add_node(name, self.instrument(name))
+        graph.add_edge(START, "validate_input")
+        graph.add_edge("validate_input", "classify")
+        graph.add_conditional_edges("classify", lambda s: "chat" if s["request"].mode == "CHAT" else "search")
         graph.add_edge("search", "fetch")
         graph.add_edge("fetch", "extract")
-        graph.add_conditional_edges("extract", lambda s: "detail_fetch" if s["detail_candidates"] else "store")
+        graph.add_conditional_edges("extract", lambda s: "detail_fetch" if s["detail_candidates"] else "validate_records")
         graph.add_edge("detail_fetch", "detail_extract")
-        graph.add_edge("detail_extract", "store")
-        graph.add_conditional_edges("store", lambda s: "match" if s["request"].mode == "DISCOVER" else "summarize")
+        graph.add_edge("detail_extract", "validate_records")
+        graph.add_edge("validate_records", "store")
+        graph.add_edge("store", "retrieve")
+        graph.add_conditional_edges("retrieve", lambda s: "match" if s["request"].mode == "DISCOVER" else "summarize")
         graph.add_edge("match", "summarize")
         graph.add_edge("summarize", END)
         graph.add_edge("chat", END)
         self.graph = graph.compile()
+
+    def instrument(self, name):
+        async def invoke(state):
+            start = time.monotonic()
+            status = "FAILED"
+            try:
+                output = await getattr(self, name)(state)
+                status = "SUCCESS"
+                return output
+            finally:
+                elapsed = max(0, int((time.monotonic() - start) * 1000))
+                result = state["result"]
+                result.execution.append(StageExecution(stage=name, status=status, duration_ms=elapsed))
+                # Never log query, profile, source content, URLs or exception values.
+                logging.getLogger("schemeradar.workflow").info(
+                    "workflow=%s stage=%s status=%s duration_ms=%d", result.workflow_id, name, status, elapsed,
+                )
+        return invoke
+
+    async def validate_input(self, state):
+        return {"request": AgentRequest.model_validate(state["request"].model_dump())}
+
+    async def classify(self, state):
+        # Explicit caller mode, not an LLM intent guess or eligibility decision.
+        state["result"].steps.append("Validated request and routed explicit " + state["request"].mode + " mode")
+        return {"result": state["result"]}
+
+    async def validate_records(self, state):
+        result = state["result"]
+        result.scholarships = [Scholarship.model_validate(s.model_dump()) for s in result.scholarships]
+        result.steps.append("Revalidated structured records before transactional storage")
+        return {"result": result}
 
     async def search(self, state):
         result = state["result"]
@@ -123,14 +163,19 @@ class Workflow:
 
     async def store(self, state):
         result = state["result"]
-        persisted = []
         for scholarship in result.scholarships:
             await self.db.save(scholarship)
+            result.stored_count += 1
+        return {"result": result}
+
+    async def retrieve(self, state):
+        result = state["result"]
+        persisted = []
+        for scholarship in result.scholarships:
             stored = await self.db.get(str(scholarship.source_url), scholarship.name)
             if stored is None:
                 raise ServiceError("A committed scholarship could not be retrieved. Retry after checking PostgreSQL.", 503)
             persisted.append(stored)
-            result.stored_count += 1
         result.scholarships = persisted
         result.steps.append(f"Committed and reloaded {result.stored_count} records from PostgreSQL")
         return {"result": result}
@@ -176,7 +221,7 @@ class Workflow:
             async with asyncio.timeout(360):
                 await self.db.health()
                 state = await self.graph.ainvoke({
-                    "request": request, "result": AgentResult(mode=request.mode, query=request.query),
+                    "request": request, "result": AgentResult(mode=request.mode, query=request.query, workflow_id=uuid4().hex),
                     "pages": [], "detail_candidates": [],
                 })
                 return state["result"]

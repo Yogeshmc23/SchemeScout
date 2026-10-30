@@ -20,7 +20,10 @@ async def test_postgres_migration_upsert_and_retrieval(scholarship):
         await db.save(scholarship)
         await db.save(scholarship)
         reloaded = await db.get(str(scholarship.source_url), scholarship.name)
-        assert reloaded == scholarship
+        assert reloaded.id is not None
+        assert reloaded.model_dump(exclude={"id", "updated_at"}) == scholarship.model_dump(exclude={"id", "updated_at"})
+        assert (await db.by_id(reloaded.id)).name == scholarship.name
+        assert len(await db.extraction_history(reloaded.id)) == 2
         records = await db.list()
         assert any(s.name == scholarship.name for s in records)
         async with db.require().connection() as conn:
@@ -29,6 +32,8 @@ async def test_postgres_migration_upsert_and_retrieval(scholarship):
     finally:
         if db.pool:
             async with db.pool.connection() as conn:
+                await conn.execute("DELETE FROM scholarship_extractions WHERE scholarship_id IN "
+                                   "(SELECT id FROM scholarships WHERE source_url=%s)", (str(scholarship.source_url),))
                 await conn.execute("DELETE FROM scholarships WHERE source_url=%s", (str(scholarship.source_url),))
                 await conn.execute("DELETE FROM scholarship_sources WHERE url=%s", (str(scholarship.source_url),))
         await db.close()

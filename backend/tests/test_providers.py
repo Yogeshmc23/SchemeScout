@@ -6,8 +6,9 @@ from pydantic import HttpUrl
 
 from app.config import Settings
 from app.models import Page
-from app.providers import Ollama, TinyFish
 from app.security import ServiceError
+from app.services.ollama import Ollama
+from app.tools.tinyfish import TinyFish
 
 
 async def test_tinyfish_missing_configuration():
@@ -30,7 +31,7 @@ async def test_search_contract_fixture(monkeypatch):
 
 async def test_fetch_partial_failure(monkeypatch):
     provider = TinyFish(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.tools.tinyfish.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "call", AsyncMock(return_value={"results": [
         {"url": "https://scholarships.gov.in/a", "text": "Content"},
         {"url": "https://scholarships.gov.in/b", "error": "unreachable"},
@@ -43,7 +44,7 @@ async def test_fetch_partial_failure(monkeypatch):
 
 async def test_fetch_redirect_rejected(monkeypatch):
     provider = TinyFish(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.tools.tinyfish.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "call", AsyncMock(return_value={"results": [
         {"url": "https://scholarships.gov.in/a", "final_url": "https://evil.com/", "text": "fake"},
     ]}))
@@ -64,7 +65,7 @@ async def test_ollama_http_failure(monkeypatch):
 
 async def test_extraction_validates_and_overrides_provenance(monkeypatch, scholarship):
     provider = Ollama(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     scholarship.source_url = HttpUrl("https://example.org/forged")
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     page = Page(url="https://scholarships.gov.in/a", content="Synthetic test scholarship. All students may apply.")
@@ -77,7 +78,7 @@ async def test_extraction_validates_and_overrides_provenance(monkeypatch, schola
 @pytest.mark.parametrize("text", ["not json", "{}", '{"name":"X","unknown":1}'])
 async def test_malformed_extraction(monkeypatch, text):
     provider = Ollama(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=text))
     with pytest.raises(ServiceError, match="validation"):
         await provider.extract(Page(url="https://scholarships.gov.in/a", content="test content"))
@@ -85,7 +86,7 @@ async def test_malformed_extraction(monkeypatch, text):
 
 async def test_fabricated_rule_evidence_rejected(monkeypatch, scholarship):
     provider = Ollama(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     with pytest.raises(ServiceError):
         await provider.extract(Page(url="https://scholarships.gov.in/a", content="Entirely different source"))
@@ -99,7 +100,7 @@ async def test_chat_without_evidence_does_not_invent():
 async def test_invented_benefit_rejected(monkeypatch, scholarship):
     provider = Ollama(Settings())
     scholarship.benefits = "Invented award of INR 100000"
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     with pytest.raises(ServiceError):
         await provider.extract(Page(url="https://scholarships.gov.in/a",
@@ -110,7 +111,7 @@ async def test_ungrounded_deadline_removed(monkeypatch, scholarship):
     from datetime import date
     provider = Ollama(Settings())
     scholarship.deadline = date(2030, 1, 1)
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.tools.tinyfish.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     data = await provider.extract(Page(url="https://scholarships.gov.in/a",
                                        content="Synthetic test scholarship. All students may apply."))
@@ -138,7 +139,7 @@ async def test_invalid_ollama_envelopes(monkeypatch, raw):
 
 async def test_fetch_preserves_safe_links_and_acquisition_time(monkeypatch):
     provider = TinyFish(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.tools.tinyfish.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "call", AsyncMock(return_value={"results": [{
         "url": "https://scholarships.gov.in/", "text": "[Scheme](/scheme/one)",
         "links": [{"href": "/scheme/two"}, {"url": "https://evil.com/scheme"}, "javascript:alert(1)"],
@@ -154,7 +155,7 @@ async def test_fabricated_numeric_bound_rejected(monkeypatch, scholarship):
     provider = Ollama(Settings())
     scholarship.rules.annual_income = Criterion(status="RESTRICTED", maximum=500000,
                                                evidence="Annual income must not exceed 250000.")
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     with pytest.raises(ServiceError):
         await provider.extract(Page(url="https://scholarships.gov.in/a",
@@ -166,7 +167,7 @@ async def test_currency_units_are_grounded(monkeypatch, scholarship):
     provider = Ollama(Settings())
     scholarship.rules.annual_income = Criterion(status="RESTRICTED", maximum=250000,
                                                maximum_exclusive=True, evidence="Annual income below INR 2.5 lakh.")
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     page = Page(url="https://scholarships.gov.in/a",
                 content="Synthetic test scholarship. All students may apply. Annual income below INR 2.5 lakh.")
@@ -184,7 +185,7 @@ async def test_mcp_initialization_timeout_is_bounded(monkeypatch):
         await asyncio.sleep(1)
         yield (None, None, None)
 
-    monkeypatch.setattr("app.providers.streamablehttp_client", stuck_transport)
+    monkeypatch.setattr("app.tools.tinyfish.streamablehttp_client", stuck_transport)
     config = Settings(tinyfish_api_key="synthetic-test-key")
     config.request_timeout = 0.01
     with pytest.raises(ServiceError):
@@ -193,7 +194,7 @@ async def test_mcp_initialization_timeout_is_bounded(monkeypatch):
 
 async def test_truncated_pages_cannot_claim_full_eligibility(monkeypatch, scholarship):
     provider = Ollama(Settings())
-    monkeypatch.setattr("app.providers.public_official_url", AsyncMock(side_effect=lambda u: u))
+    monkeypatch.setattr("app.services.ollama.public_official_url", AsyncMock(side_effect=lambda u: u))
     monkeypatch.setattr(provider, "generate", AsyncMock(return_value=scholarship.model_dump_json()))
     page = Page(url="https://scholarships.gov.in/a", truncated=True,
                 content="Synthetic test scholarship. All students may apply.")

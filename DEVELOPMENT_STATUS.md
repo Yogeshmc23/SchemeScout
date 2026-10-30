@@ -165,3 +165,68 @@ Changed:
 - [ ] Intended Git delivery reviewed; Windows/service setup and remaining limitations confirmed.
 
 **Resume point:** Provision/verify the real configured services and run the existing dedicated database/live tests, then the README demonstration. Do not start a replacement scaffold or substitute demo scholarships for live results.
+
+## Architecture expansion — phase 1 assessment and phase 2 module boundaries (2026-10-31)
+
+**Assessment COMPLETE; backend modularization PARTIAL.** Baseline before changes: `pytest -q backend/tests` 125 passed, 2 skipped; Ruff and `pip check` passed. Existing contracts, bounded LangGraph and transactional JSONB repository are retained rather than replaced with empty scaffolding.
+
+Implemented files: `backend/app/api/{dependencies.py,routes/operations.py}`, `backend/app/services/{runtime.py,ollama.py}`, `backend/app/tools/tinyfish.py`; modified bootstrap/workflow/provider/API tests. Removed the former combined `providers.py` after migrating all imports and monkeypatch targets. Services are application-scoped and obtained through FastAPI dependency injection. Legacy `/api` and new `/api/v1` share handlers, including `discover-and-match`; both use the same concurrency limit. Endpoint logic is no longer in bootstrap.
+
+Actual verification after these changes: backend **125 passed, 2 skipped**; Ruff passed. Live services remain UNVERIFIED. Remaining: expanded criterion contracts/tests, durable extraction history/detail access, frontend consumers, explicit graph stages/diagnostics, architecture docs and integration validation. No semantic retrieval or real student acceptance is claimed.
+
+## Architecture phase 3 — contracts and eligibility
+
+**COMPLETE (implemented scope), live acceptance UNVERIFIED.** Modified `models.py`, `eligibility.py`, `api/errors.py`, bootstrap/router and frontend types/guards. Additive criterion `mandatory` defaults true for old data; explanations include student value and structured requirement. Failed mandatory checks outrank unknown mandatory checks; optional failures/unknowns cannot disqualify. Model extraction rejects optional downgrades rather than silently trusting an LLM's classification. Errors retain legacy `detail` and add code/message/request ID. New API/versioning/optional-rule tests executed: **130 passed, 2 skipped** at this phase; Ruff passed. Normalization remains explicit exact case/whitespace normalization, not inferred equivalences.
+
+## Architecture phase 4 — database persistence
+
+**IMPLEMENTED; actual PostgreSQL execution UNVERIFIED.** Added `migrations/003_extraction_history.sql`; modified `db.py`, models, routes and database/API tests. Stable existing bigint IDs and updated timestamps are projected from SQL rather than accepted from extraction. Each save atomically updates the latest scholarship/source and appends an extraction snapshot. Positive-ID detail/history endpoints provide bounded reads and honest 404s. Optional research history has separate constrained storage; only RESEARCH without matches may be retained. Default disabled; no profiles are added to storage. Existing rows are preserved, not assigned invented past extractions. Packaged migration runner applies 001+003 under the existing advisory lock/transaction; optional extension 002 is still not automatic.
+
+SQL/lifecycle doubles and API tests passed, but are NOT migration/transaction proof. No PostgreSQL or Docker executable is available in this workspace; the opt-in real database test is updated to assert stable IDs and two snapshots and remains skipped. Existing Windows data, resources and volumes were not touched.
+
+## Architecture phases 5–7 — providers, orchestration and deterministic matching
+
+**IMPLEMENTED; live provider integration UNVERIFIED.** TinyFish and Qwen retain the existing source/evidence guards and bounded transport. Added `services/research.py` to own opt-in retention policy; a history save outage produces an explicit warning without falsely claiming a history ID or discarding already valid results. `workflow.py` remains the single LangGraph: explicit validate/classify, acquisition/extraction, pre-store validation, store, retrieve, deterministic match and summary, with separate chat path. Store/retrieve are now distinct stages. Added bounded per-stage timings/status and opaque workflow IDs; logs contain no queries/profiles/source URLs/content. Latest backend run after these additions: **137 passed, 2 skipped**, Ruff passed. Embeddings/semantic retrieval NOT STARTED and deliberately not represented as complete; existing lexical evidence selection is retained. No Redis added without a concrete need.
+
+## Architecture phase 8 — frontend
+
+**IMPLEMENTED; final checks in progress.** Added typed `lib/scholarships.ts`, scholarship detail route, extraction snapshot display and explicit opt-in saved-research loading. Modified result cards/rule labels, Research page, transport (now `/api/v1`), types and runtime contracts. Existing dashboard/profile/discovery/eligibility/assistant/about remain in place. Real loading/error/empty states replace any assumption of available storage/history. New detail/history contract and history component tests added. First frontend run before these last tests: typecheck/lint passed; **28 passed, 3 optional HTTP tests skipped**. A lint violation in the initial detail effect was fixed with keyed route state (no rule disabled). A missing test import caught by typecheck is corrected; final re-run pending below.
+
+Remaining: final frontend/backend/proxy validation, six architecture docs, review of diffs and operational limitations. Full service-backed student journey remains UNVERIFIED, not complete.
+
+## Architecture phases 9–10 — integration, documentation and final validation
+
+**Local implementation/validation COMPLETE; live acceptance PARTIAL / UNVERIFIED.** Added all six required references: `docs/{architecture,database-design,api-design,agent-workflow,security,deployment}.md`. They describe the actual module map, API contracts, SQL schema, graph/dataflow diagrams, privacy boundaries, exact POSIX/PowerShell startup and remaining acceptance gates. Updated README/module tree, `.env.example`, and Compose's opt-in history environment forwarding. Existing database images/volumes and unrelated services were not altered.
+
+Final executed results (2026-10-31):
+
+| Check | Actual result |
+| --- | --- |
+| `.venv/bin/pytest -q backend/tests` | **141 passed, 2 skipped** |
+| `.venv/bin/ruff check backend` | **passed** |
+| `.venv/bin/pip check` | **No broken requirements found** |
+| `npm --prefix frontend run typecheck` | **passed** |
+| `npm --prefix frontend run lint` | **passed** |
+| `SCHEMERADAR_SMOKE_URL=http://127.0.0.1:3000 npm --prefix frontend test` | **36 passed**, including 3 actual Next → FastAPI HTTP tests |
+| `npm run build` in frontend | **passed**, seven existing pages plus dynamic scholarship detail route |
+| `.venv/bin/python tests/smoke.py` | **passed** seven pages, health proxy, real profile validation, invalid rejection and OpenAPI; DB listing honestly **503** |
+| Additional actual HTTP | detail page shell **200**; v1 health **200**; disabled research history **503**; nonpositive scholarship ID **422**; versioned detail/history OpenAPI confirmed |
+| `git diff --check` | **passed** |
+
+New regressions cover backward-compatible versioning/shared capacity, safe error envelopes, optional/mandatory precedence, structured check values, positive-ID details and missing records, history bounds/privacy defaults, parameterized query retention and discovery rejection, retained results on history outage, explicit graph-stage metadata, frontend history loading/errors, detail/history independent failure, and runtime detail/history guards. SQL/provider/graph test doubles are isolated fixtures, not live integration proof.
+
+The actual current source was loaded into Uvicorn on **0.0.0.0:8000**; the latest production Next build serves on **0.0.0.0:3000**. Only this app's previously inspected API/Next processes were restarted. Preview page success is not proof of populated scholarship data.
+
+### Remaining gates / limitations
+
+- **UNVERIFIED:** actual PostgreSQL 001+003 execution, upsert/snapshot/rollback/restart behavior and compatibility with the user's existing database. Dedicated live DB test was updated, not run.
+- **UNVERIFIED:** real TinyFish Search/Fetch, Qwen extraction, official-source manual review and a complete real-profile discovery → persisted readback → eligibility → details/assistant browser journey. Missing service configuration was not replaced with fake data.
+- **UNVERIFIED:** Docker build/start, intended Windows deployment, real browser/mobile/accessibility E2E and remote CI.
+- **NOT STARTED / intentionally deferred:** embeddings/semantic retrieval. Optional pgvector extension alone is not counted as functionality; eligibility never uses similarity.
+- Optional-rule semantics require reviewed structured data; automatic model downgrades are intentionally rejected. JSONB structured rules are retained instead of an unnecessary relational rewrite.
+- Research history is opt-in, deployment-wide, not user-private; authentication/isolation/automatic retention are not implemented. Do not publicly expose it without controls. No personal profiles or DISCOVER match results are persisted.
+- Existing conservative extraction/evidence and remote-provider DNS/redirect limitations still apply. History lists are bounded, but operators must establish retention limits for stored snapshots/queries.
+
+**Overall:** substantial connected architecture expansion implemented and locally tested, not a claim of complete service-backed student acceptance. No additional Git commit/push was made in this expansion; changes are saved on the fixed session branch and are not yet included in the already-open PR's remote diff.
+
+Final packaging follow-up: an optional `pip wheel --no-build-isolation` attempt failed because this venv lacks `bdist_wheel` and has an older build backend; no application check was disabled. Retried with the project's declared isolated build requirements using `.venv/bin/pip wheel --no-deps --wheel-dir backend/dist ./backend`: **passed**. Inspected the resulting wheel to confirm the new API/service/tool packages and migration 003 are packaged and removed `providers.py` is absent. Wheel/build outputs remain ignored. API detail IDs are additionally bounded to PostgreSQL bigint range; backend tests still **141 passed, 2 skipped**, Ruff/diff checks passed afterward. Latest source API was restarted on port 8000; latest production frontend remains on 3000.

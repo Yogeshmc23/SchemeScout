@@ -19,6 +19,7 @@ class Profile(Model):
 
 
 class Criterion(Model):
+    mandatory: bool = True
     status: Literal["UNKNOWN", "ANY", "RESTRICTED"] = "UNKNOWN"
     values: list[str] = Field(default_factory=list, max_length=50)
     minimum: int | None = Field(None, ge=0, strict=True)
@@ -71,6 +72,8 @@ class Rules(Model):
 
 
 class Scholarship(Model):
+    id: int | None = Field(None, gt=0)
+    updated_at: datetime | None = None
     name: str = Field(min_length=3, max_length=250)
     description: str | None = Field(None, max_length=4000)
     benefits: str | None = Field(None, max_length=2000)
@@ -117,6 +120,9 @@ class Check(Model):
     outcome: Literal["PASS", "FAIL", "UNKNOWN"]
     reason: str
     evidence: str | None = None
+    mandatory: bool = True
+    student_value: str | int | None = None
+    requirement: Criterion | None = None
 
 
 class Match(Model):
@@ -165,6 +171,12 @@ class SourceOutcome(Model):
     message: str
 
 
+class StageExecution(Model):
+    stage: str
+    status: Literal["SUCCESS", "FAILED"]
+    duration_ms: int = Field(ge=0)
+
+
 class AgentResult(Model):
     mode: str
     query: str = ""
@@ -176,3 +188,19 @@ class AgentResult(Model):
     errors: list[str] = Field(default_factory=list)
     steps: list[str] = Field(default_factory=list)
     stored_count: int = 0
+    research_id: str | None = None
+    workflow_id: str | None = None
+    execution: list[StageExecution] = Field(default_factory=list)
+
+
+class ExtractionSnapshot(Model):
+    id: int
+    recorded_at: datetime
+    scholarship: Scholarship
+
+
+class ResearchRun(Model):
+    id: str
+    query: str
+    created_at: datetime
+    scholarship_count: int

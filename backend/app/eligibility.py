@@ -40,7 +40,8 @@ def match(profile: Profile, scholarship: Scholarship) -> Match:
                 passed = normalized(value) in {normalized(v) for v in rule.values}
                 outcome = "PASS" if passed else "FAIL"
                 reason = f"Student value '{value}'; explicit allowed values: {', '.join(rule.values)}."
-        checks.append(Check(field=field, outcome=outcome, reason=reason, evidence=rule.evidence))
+        checks.append(Check(field=field, outcome=outcome, reason=reason, evidence=rule.evidence,
+                            mandatory=rule.mandatory, student_value=value, requirement=rule))
     if not scholarship.official_source:
         checks.append(Check(field="source", outcome="UNKNOWN", reason="Not verified against an approved official source."))
     if not scholarship.eligibility_complete:
@@ -48,8 +49,8 @@ def match(profile: Profile, scholarship: Scholarship) -> Match:
     if scholarship.deadline and scholarship.deadline < date.today():
         checks.append(Check(field="deadline", outcome="FAIL", reason="The recorded application deadline has passed."))
     status = Status.NEEDS_INFORMATION
-    if any(c.outcome == "FAIL" for c in checks):
+    if any(c.outcome == "FAIL" and c.mandatory for c in checks):
         status = Status.NOT_ELIGIBLE
-    elif all(c.outcome == "PASS" for c in checks):
+    elif all(c.outcome == "PASS" for c in checks if c.mandatory):
         status = Status.ELIGIBLE
     return Match(scholarship=scholarship, status=status, checks=checks)

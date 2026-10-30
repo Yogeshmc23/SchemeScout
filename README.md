@@ -45,7 +45,9 @@ backend/
     models.py            profiles, extraction, rules, results and API contracts
     eligibility.py       deterministic normalized comparisons
     security.py          exact-host policy, URL/DNS guards
-    providers.py         TinyFish MCP and Ollama adapters
+    api/                 shared legacy/versioned routers, injected dependencies and safe errors
+    tools/tinyfish.py    TinyFish MCP Search/Fetch adapter
+    services/            Ollama client, runtime dependencies and research retention policy
     workflow.py          LangGraph mode routing and workflow nodes
     db.py                PostgreSQL pool, migrations and repositories
     migrations/          packaged reproducible SQL
@@ -193,7 +195,7 @@ docker compose exec ollama ollama pull qwen2.5:3b
 docker compose up --build -d backend frontend
 ```
 
-The backend image applies its packaged initial migration before serving. Database/Ollama ports bind to
+The backend image applies its packaged additive migrations before serving. Database/Ollama ports bind to
 host loopback; frontend listens on port 3000. Ollama models and PostgreSQL use persistent volumes.
 Container builds and startup remain unverified because Docker is unavailable here.
 
@@ -368,3 +370,35 @@ tests passed with real HTTP enabled** (28 unit/component/contract tests plus thr
 Ruff, ESLint, TypeScript, production build, pip consistency and full npm audit passed. All seven page
 routes returned HTTP 200. PostgreSQL/TinyFish/Ollama live success and real-browser E2E remain unverified;
 missing configuration returns explicit 503 responses. See `DEVELOPMENT_STATUS.md` for the current ledger.
+
+
+## Architecture expansion (2026-10-31)
+
+All operations are also available under **`/api/v1`**; the frontend now uses this prefix.
+Legacy `/api` routes remain compatible. `/api/v1/discover-and-match` aliases discovery.
+See [architecture](docs/architecture.md), [database](docs/database-design.md),
+[API](docs/api-design.md), [workflow](docs/agent-workflow.md),
+[security](docs/security.md), and [deployment](docs/deployment.md).
+
+Apply the additive migration before using the new endpoints: from `backend`, run
+`python -m app.db` with the existing configured `DATABASE_URL`. It adds extraction
+snapshots and research history without changing existing scholarship identities.
+Scholarship API results now include stable `id` and `updated_at`; card links open
+`/scholarships/{id}` with the latest record and extraction history. Historical rows
+have no fabricated snapshots; only new saves create them.
+
+Research history is **off by default**. Setting `ENABLE_RESEARCH_HISTORY=true`
+retains research queries and public evidence across restarts; it never retains
+DISCOVER profiles/matches. History is deployment-wide, not a private account.
+Use it only on a trusted deployment, avoid personal information in research queries,
+and establish access control/retention before public exposure. The Research page
+loads it on explicit request and reports disabled/unavailable storage honestly.
+
+The matcher exposes student value, full requirement, mandatory flag, explanation
+and source quotation per criterion. Optional rules cannot disqualify. Qwen cannot
+mark an extracted mandatory rule optional; reviewed optional classification is a
+structured-data capability, not an automatic semantic inference.
+
+Current validation and external blockers are recorded in `DEVELOPMENT_STATUS.md`.
+The new schema and live end-to-end journey remain unverified until the dedicated
+PostgreSQL/provider/browser checks run; unit doubles are not that proof.

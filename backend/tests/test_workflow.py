@@ -95,3 +95,13 @@ async def test_chat_does_not_attach_irrelevant_records(scholarship):
     result = await Workflow(db, tinyfish, ollama).run(AgentRequest(mode="CHAT", query="Unrelated opportunity query"))
     assert not result.sources
     ollama.answer.assert_awaited_once_with("Unrelated opportunity query", [])
+
+
+async def test_graph_execution_has_explicit_safe_stages():
+    db, tinyfish, ollama = AsyncMock(), AsyncMock(), AsyncMock()
+    tinyfish.search.return_value = []
+    result = await Workflow(db, tinyfish, ollama).run(AgentRequest(mode='RESEARCH', query='fixture query'))
+    stages = [entry.stage for entry in result.execution]
+    assert stages == ['validate_input', 'classify', 'search', 'fetch', 'extract', 'validate_records', 'store', 'retrieve', 'summarize']
+    assert all(entry.duration_ms >= 0 and entry.status == 'SUCCESS' for entry in result.execution)
+    assert len(result.workflow_id) == 32

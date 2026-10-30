@@ -6,7 +6,8 @@ import pytest
 from app.config import Settings
 from app.db import Database
 from app.models import AgentRequest, Profile
-from app.providers import Ollama, TinyFish
+from app.services.ollama import Ollama
+from app.tools.tinyfish import TinyFish
 from app.workflow import Workflow
 
 

@@ -7,7 +7,7 @@ describe("API service", () => {
     vi.stubGlobal("fetch", mock);
     const result = await api<{state: string}>("profile", {state: "Karnataka"});
     expect(result.state).toBe("Karnataka");
-    expect(mock.mock.calls[0][0]).toBe("/api/profile");
+    expect(mock.mock.calls[0][0]).toBe("/api/v1/profile");
     expect(mock.mock.calls[0][1].method).toBe("POST");
     expect(JSON.parse(mock.mock.calls[0][1].body)).toEqual({state: "Karnataka"});
   });

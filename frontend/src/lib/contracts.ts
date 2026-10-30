@@ -17,12 +17,13 @@ export function isProfile(v: unknown): boolean {
     ["study_year", "annual_income"].every(k => nullableNumber(v[k]));
 }
 function isCriterion(v: unknown): boolean {
-  return object(v) && oneOf(v.status, ["UNKNOWN", "ANY", "RESTRICTED"]) && strings(v.values) &&
+  return object(v) && (v.mandatory === undefined || typeof v.mandatory === "boolean") && oneOf(v.status, ["UNKNOWN", "ANY", "RESTRICTED"]) && strings(v.values) &&
     nullableNumber(v.minimum) && nullableNumber(v.maximum) && nullableString(v.evidence) &&
     typeof v.minimum_exclusive === "boolean" && typeof v.maximum_exclusive === "boolean";
 }
 export function isScholarship(v: unknown): boolean {
-  return object(v) && typeof v.name === "string" && nullableString(v.description) && nullableString(v.benefits) &&
+  return object(v) && (v.id === undefined || v.id === null || (typeof v.id === "number" && Number.isSafeInteger(v.id) && v.id > 0)) &&
+    (v.updated_at === undefined || nullableString(v.updated_at)) && typeof v.name === "string" && nullableString(v.description) && nullableString(v.benefits) &&
     nullableString(v.deadline) && nullableUrl(v.application_url) && url(v.source_url) &&
     strings(v.required_documents) && strings(v.missing_information) && object(v.fact_evidence) &&
     Object.values(v.fact_evidence).every(x => typeof x === "string") && object(v.rules) &&
@@ -44,12 +45,17 @@ function isOutcome(v: unknown): boolean {
     oneOf(v.status, ["SUCCESS", "FAILED"]) && typeof v.message === "string";
 }
 export function isAgentResult(v: unknown): boolean {
-  return object(v) && typeof v.mode === "string" && typeof v.query === "string" && typeof v.summary === "string" &&
+  return object(v) && (v.execution === undefined || arrayOf(v.execution, e => object(e) && typeof e.stage === "string" && oneOf(e.status, ["SUCCESS", "FAILED"]) && typeof e.duration_ms === "number" && Number.isInteger(e.duration_ms) && e.duration_ms >= 0)) && typeof v.mode === "string" && typeof v.query === "string" && typeof v.summary === "string" &&
     arrayOf(v.sources, isSource) && arrayOf(v.source_outcomes, isOutcome) && arrayOf(v.scholarships, isScholarship) &&
     arrayOf(v.matches, isMatch) && strings(v.errors) && strings(v.steps) &&
     typeof v.stored_count === "number" && Number.isInteger(v.stored_count) && v.stored_count >= 0;
 }
 export function validResponse(path: string, data: unknown): boolean {
+  const route = path.split("?")[0];
+  if (/^scholarships\/\d+\/history$/.test(route)) return arrayOf(data, s => object(s) && typeof s.id === "number" && typeof s.recorded_at === "string" && isScholarship(s.scholarship));
+  if (/^scholarships\/\d+$/.test(route)) return isScholarship(data);
+  if (route === "research/history") return arrayOf(data, r => object(r) && typeof r.id === "string" && typeof r.query === "string" && typeof r.created_at === "string" && typeof r.scholarship_count === "number");
+  if (route.startsWith("research/history/")) return isAgentResult(data);
   if (path === "profile") return isProfile(data);
   if (path === "scholarships") return arrayOf(data, isScholarship);
   if (path === "eligibility" || path === "match") return arrayOf(data, isMatch);

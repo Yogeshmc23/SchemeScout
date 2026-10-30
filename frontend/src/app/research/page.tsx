@@ -1,2 +1,3 @@
 import { ResearchForm } from "@/components/research-form";
-export default function ResearchPage() {return <ResearchForm mode="RESEARCH"/>;}
+import { ResearchHistory } from "@/components/research-history";
+export default function ResearchPage() {return <><ResearchForm mode="RESEARCH"/><ResearchHistory/></>;}
