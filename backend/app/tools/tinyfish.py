@@ -126,4 +126,3 @@ class TinyFish:
             if url not in received:
                 errors.append(f"No successful, policy-approved page content returned for {url}")
         return pages, errors
-

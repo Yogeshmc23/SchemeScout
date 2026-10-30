@@ -230,3 +230,7 @@ The actual current source was loaded into Uvicorn on **0.0.0.0:8000**; the lates
 **Overall:** substantial connected architecture expansion implemented and locally tested, not a claim of complete service-backed student acceptance. No additional Git commit/push was made in this expansion; changes are saved on the fixed session branch and are not yet included in the already-open PR's remote diff.
 
 Final packaging follow-up: an optional `pip wheel --no-build-isolation` attempt failed because this venv lacks `bdist_wheel` and has an older build backend; no application check was disabled. Retried with the project's declared isolated build requirements using `.venv/bin/pip wheel --no-deps --wheel-dir backend/dist ./backend`: **passed**. Inspected the resulting wheel to confirm the new API/service/tool packages and migration 003 are packaged and removed `providers.py` is absent. Wheel/build outputs remain ignored. API detail IDs are additionally bounded to PostgreSQL bigint range; backend tests still **141 passed, 2 skipped**, Ruff/diff checks passed afterward. Latest source API was restarted on port 8000; latest production frontend remains on 3000.
+
+## Git delivery (2026-10-31)
+
+Architecture expansion committed and pushed to `arena/ae4fd465-schemescout` in commit `6a9ed2b`, updating existing PR #1. Earlier notes that the expansion was not pushed describe the pre-delivery state. A follow-up removes an extra EOF blank line caught by the staged whitespace check.
